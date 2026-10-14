@@ -1,0 +1,47 @@
+name: HammerX Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Attack Mode (tcp, udp, http)'
+        required: true
+        default: 'tcp'
+        type: choice
+        options:
+          - tcp
+          - udp
+          - http
+      target:
+        description: 'Target IP or URL'
+        required: true
+        default: '127.0.0.1'
+      port:
+        description: 'Target Port'
+        required: true
+        default: '80'
+      duration:
+        description: 'Duration in seconds'
+        required: true
+        default: '15'
+
+jobs:
+  run-hammerx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run Tool
+        run: |
+          python3 hammerx_bot.py ${{ inputs.mode }} ${{ inputs.target }} --port ${{ inputs.port }} --time ${{ inputs.duration }}
